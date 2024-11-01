@@ -1,0 +1,6 @@
+2024-11-01 12:19:55,052 - INFO - Starting Kenny U-Pull Inventory Scraper with eBay Search Integration...
+2024-11-01 12:19:55,063 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+2024-11-01 12:19:55,064 - INFO - [33mPress CTRL+C to quit[0m
+2024-11-01 12:20:07,541 - INFO - 127.0.0.1 - - [01/Nov/2024 12:20:07] "[33mGET / HTTP/1.1[0m" 404 -
+2024-11-01 12:20:08,231 - INFO - 127.0.0.1 - - [01/Nov/2024 12:20:08] "[33mGET / HTTP/1.1[0m" 404 -
