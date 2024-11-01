@@ -95,7 +95,7 @@ class KennyUPullScraper:
         chrome_options.add_argument("--headless")  # Run in headless mode (no display)
         chrome_options.add_argument("--no-sandbox")  # Bypass OS security model
         chrome_options.add_argument("--disable-dev-shm-usage")  # Overcome limited resource problems
-        chrome_options.binary_location = '/usr/bin/google-chrome'  # Specify the Chrome binary location
+        chrome_options.binary_location = '/usr/bin/google-chrome-stable'  # Specify the Chrome binary location
         
         self.driver = webdriver.Chrome(
             service=Service(ChromeDriverManager().install()),
