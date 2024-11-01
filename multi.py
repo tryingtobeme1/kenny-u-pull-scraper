@@ -1,17 +1,16 @@
+from flask import Flask, jsonify, request, url_for
 import os
 import time
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from datetime import datetime
 from webdriver_manager.chrome import ChromeDriverManager
-from flask import Flask, render_template_string, jsonify, request, url_for
 from bs4 import BeautifulSoup
 import requests
 from urllib.parse import quote_plus
 
-app = Flask(__name__)
+app = Flask(__name__)  # Initialize the Flask app
 
 # Ensure the results directory exists
 RESULTS_DIR = 'static/results'
@@ -88,139 +87,6 @@ def fetch_ebay_listings(year, make, model, min_price="150", max_price="700", lim
         print(f"Error fetching eBay listings: {e}")
         return []
 
-class KennyUPullScraper:
-    def __init__(self, location):
-        self.location = location
-        chrome_options = Options()
-        chrome_options.add_argument("--headless")  # Run in headless mode (no display)
-        chrome_options.add_argument("--no-sandbox")  # Bypass OS security model
-        chrome_options.add_argument("--disable-dev-shm-usage")  # Overcome limited resource problems
-        chrome_options.binary_location = '/usr/bin/google-chrome-stable'  # Specify the Chrome binary location
-        
-        self.driver = webdriver.Chrome(
-            service=Service(ChromeDriverManager().install()),
-            options=chrome_options
-        )
-        
-        self.urls = {
-            'Ottawa': "https://kennyupull.com/auto-parts/our-inventory/?branch%5B%5D=1457192&nb_items=42&sort=date",
-            'Gatineau': "https://kennyupull.com/auto-parts/our-inventory/?branch%5B%5D=1457182&nb_items=42&sort=date",
-            'Cornwall': "https://kennyupull.com/auto-parts/our-inventory/?branch%5B%5D=1576848&nb_items=42&sort=date"
-        }
-
-    def scrape_page(self):
-        self.driver.get(self.urls[self.location])
-        time.sleep(5)  # Waiting for the page to load
-
-        cars = []
-        car_elements = self.driver.find_elements(By.CSS_SELECTOR, "img[data-src]")
-        
-        for car_element in car_elements:
-            try:
-                title = car_element.get_attribute("alt")
-                image_url = car_element.get_attribute("data-src")
-                parent_element = car_element.find_element(By.XPATH, "../..")
-                
-                # Attempt to locate the <a> tag for the detail URL
-                try:
-                    detail_url = parent_element.find_element(By.TAG_NAME, "a").get_attribute("href")
-                except Exception as e:
-                    print_status(f"Skipping a car due to missing link for title: {title}")
-                    log_skipped_car(title)  # Log skipped cars
-                    continue  # Skip this car if there's no <a> tag
-
-                # Append car data if all elements are successfully retrieved
-                cars.append({
-                    "title": title,
-                    "image_url": image_url,
-                    "detail_url": detail_url,
-                    "branch": self.location,
-                    "date_listed": datetime.now().strftime("%Y-%m-%d")
-                })
-            except Exception as e:
-                print_status(f"Skipping a car due to error: {e}")
-                continue
-
-        self.driver.quit()
-        return cars
-
-@app.route('/')
-def home():
-    html = """
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Kenny U-Pull Inventory and eBay Search</title>
-        <style>
-            body { font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; background-color: #f0f2f5; }
-            .container { padding: 20px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-            button { padding: 10px 15px; margin: 5px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-            button:hover { background-color: #0056b3; }
-            .card { border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin: 10px 0; display: inline-block; width: 30%; vertical-align: top; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-            .card img { width: 100%; height: 200px; object-fit: cover; border-bottom: 1px solid #ddd; }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>Kenny U-Pull Inventory Scraper</h1>
-            <div>
-                <button onclick="startScraping('Ottawa')">Scrape Ottawa</button>
-                <button onclick="startScraping('Gatineau')">Scrape Gatineau</button>
-                <button onclick="startScraping('Cornwall')">Scrape Cornwall</button>
-            </div>
-            <div id="status"></div>
-            <div id="results"></div>
-        </div>
-
-        <script>
-            function startScraping(location) {
-                document.getElementById('status').innerText = "Scraping " + location + "...";
-                fetch(`/scrape/${location}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        displayResults(data[location]);
-                        document.getElementById('status').innerText = "Scraping completed!";
-                    });
-            }
-
-            function displayResults(inventory) {
-                const resultsDiv = document.getElementById('results');
-                resultsDiv.innerHTML = '';
-                inventory.forEach(car => {
-                    const carDiv = document.createElement('div');
-                    carDiv.className = 'card';
-                    carDiv.innerHTML = `
-                        <img src="${car.image_url}" alt="${car.title}">
-                        <h3>${car.title}</h3>
-                        <p><a href="${car.detail_url}" target="_blank">View on Kenny U-Pull</a></p>
-                        <button onclick="fetchSoldParts('${car.title}', '${car.branch}')">Check Sold Parts</button>
-                    `;
-                    resultsDiv.appendChild(carDiv);
-                });
-            }
-
-            function fetchSoldParts(title, branch) {
-                const [year, make, model] = title.split(' ');
-                fetch(`/generate_sold_results?year=${year}&make=${make}&model=${model}&location=${branch}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        window.location.href = data.file_url;
-                    });
-            }
-        </script>
-    </body>
-    </html>
-    """
-    return render_template_string(html)
-
-@app.route('/scrape/<location>')
-def scrape(location):
-    scraper = KennyUPullScraper(location)
-    inventory = scraper.scrape_page()
-    return jsonify({location: inventory})
-
 @app.route('/generate_sold_results')
 def generate_sold_results():
     year = request.args.get('year')
@@ -245,22 +111,52 @@ def generate_sold_results():
             .back-button:hover {{ background-color: #0056b3; }}
             table {{ width: 100%; border-collapse: collapse; }}
             th, td {{ padding: 10px; border: 1px solid #ddd; text-align: left; }}
-            th {{ background-color: #f8f8f8; font-weight: bold; }}
+            th {{ background-color: #f8f8f8; font-weight: bold; cursor: pointer; }}
             a {{ color: #007bff; text-decoration: none; }}
             a:hover {{ text-decoration: underline; }}
             img {{ width: 60px; height: auto; }}
         </style>
+        <script>
+            function sortTable(n, isNumeric) {{
+                const table = document.getElementById("resultsTable");
+                let switching = true;
+                let direction = "asc";
+
+                while (switching) {{
+                    switching = false;
+                    const rows = table.rows;
+                    for (let i = 1; i < rows.length - 1; i++) {{
+                        let shouldSwitch = false;
+                        const x = rows[i].getElementsByTagName("TD")[n];
+                        const y = rows[i + 1].getElementsByTagName("TD")[n];
+                        let xValue = isNumeric ? parseFloat(x.innerText.replace(/[^0-9.-]+/g, "")) : x.innerText.toLowerCase();
+                        let yValue = isNumeric ? parseFloat(y.innerText.replace(/[^0-9.-]+/g, "")) : y.innerText.toLowerCase();
+                        if ((direction === "asc" && xValue > yValue) || (direction === "desc" && xValue < yValue)) {{
+                            shouldSwitch = true;
+                            break;
+                        }}
+                    }}
+                    if (shouldSwitch) {{
+                        rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
+                        switching = true;
+                    }} else if (direction === "asc") {{
+                        direction = "desc";
+                        switching = true;
+                    }}
+                }}
+            }}
+        </script>
     </head>
     <body>
         <div class="container">
             <h2>Sold Listings for {year} {make} {model} - {location}</h2>
             <a href="/" class="back-button">Back to Inventory</a>
-            <table>
+            <table id="resultsTable">
                 <tr>
                     <th>Row</th>
                     <th>Image</th>
-                    <th>Title</th>
-                    <th>Price</th>
+                    <th onclick="sortTable(2, false)">Title</th>
+                    <th onclick="sortTable(3, true)">Price</th>
                     <th>Shipping</th>
                     <th>Date Sold</th>
                 </tr>
