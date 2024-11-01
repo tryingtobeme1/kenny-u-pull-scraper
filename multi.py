@@ -1,8 +1,8 @@
 from flask import Flask, jsonify, request, url_for
 import os
-import time
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from datetime import datetime
 from webdriver_manager.chrome import ChromeDriverManager
@@ -87,6 +87,62 @@ def fetch_ebay_listings(year, make, model, min_price="150", max_price="700", lim
         print(f"Error fetching eBay listings: {e}")
         return []
 
+class KennyUPullScraper:
+    def __init__(self, location):
+        self.location = location
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")  # Run Chromium in headless mode
+        chrome_options.add_argument("--no-sandbox")  # Required for some environments
+        chrome_options.add_argument("--disable-dev-shm-usage")  # Prevents memory issues
+        chrome_options.binary_location = "/usr/bin/chromium-browser"  # Use Chromium binary path
+
+        self.driver = webdriver.Chrome(
+            service=Service(ChromeDriverManager().install()),
+            options=chrome_options
+        )
+        
+        self.urls = {
+            'Ottawa': "https://kennyupull.com/auto-parts/our-inventory/?branch%5B%5D=1457192&nb_items=42&sort=date",
+            'Gatineau': "https://kennyupull.com/auto-parts/our-inventory/?branch%5B%5D=1457182&nb_items=42&sort=date",
+            'Cornwall': "https://kennyupull.com/auto-parts/our-inventory/?branch%5B%5D=1576848&nb_items=42&sort=date"
+        }
+
+    def scrape_page(self):
+        self.driver.get(self.urls[self.location])
+        time.sleep(5)  # Waiting for the page to load
+
+        cars = []
+        car_elements = self.driver.find_elements(By.CSS_SELECTOR, "img[data-src]")
+        
+        for car_element in car_elements:
+            try:
+                title = car_element.get_attribute("alt")
+                image_url = car_element.get_attribute("data-src")
+                parent_element = car_element.find_element(By.XPATH, "../..")
+                
+                # Attempt to locate the <a> tag for the detail URL
+                try:
+                    detail_url = parent_element.find_element(By.TAG_NAME, "a").get_attribute("href")
+                except Exception as e:
+                    print_status(f"Skipping a car due to missing link for title: {title}")
+                    log_skipped_car(title)  # Log skipped cars
+                    continue  # Skip this car if there's no <a> tag
+
+                # Append car data if all elements are successfully retrieved
+                cars.append({
+                    "title": title,
+                    "image_url": image_url,
+                    "detail_url": detail_url,
+                    "branch": self.location,
+                    "date_listed": datetime.now().strftime("%Y-%m-%d")
+                })
+            except Exception as e:
+                print_status(f"Skipping a car due to error: {e}")
+                continue
+
+        self.driver.quit()
+        return cars
+
 @app.route('/generate_sold_results')
 def generate_sold_results():
     year = request.args.get('year')
@@ -116,36 +172,6 @@ def generate_sold_results():
             a:hover {{ text-decoration: underline; }}
             img {{ width: 60px; height: auto; }}
         </style>
-        <script>
-            function sortTable(n, isNumeric) {{
-                const table = document.getElementById("resultsTable");
-                let switching = true;
-                let direction = "asc";
-
-                while (switching) {{
-                    switching = false;
-                    const rows = table.rows;
-                    for (let i = 1; i < rows.length - 1; i++) {{
-                        let shouldSwitch = false;
-                        const x = rows[i].getElementsByTagName("TD")[n];
-                        const y = rows[i + 1].getElementsByTagName("TD")[n];
-                        let xValue = isNumeric ? parseFloat(x.innerText.replace(/[^0-9.-]+/g, "")) : x.innerText.toLowerCase();
-                        let yValue = isNumeric ? parseFloat(y.innerText.replace(/[^0-9.-]+/g, "")) : y.innerText.toLowerCase();
-                        if ((direction === "asc" && xValue > yValue) || (direction === "desc" && xValue < yValue)) {{
-                            shouldSwitch = true;
-                            break;
-                        }}
-                    }}
-                    if (shouldSwitch) {{
-                        rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
-                        switching = true;
-                    }} else if (direction === "asc") {{
-                        direction = "desc";
-                        switching = true;
-                    }}
-                }}
-            }}
-        </script>
     </head>
     <body>
         <div class="container">
@@ -155,8 +181,8 @@ def generate_sold_results():
                 <tr>
                     <th>Row</th>
                     <th>Image</th>
-                    <th onclick="sortTable(2, false)">Title</th>
-                    <th onclick="sortTable(3, true)">Price</th>
+                    <th>Title</th>
+                    <th>Price</th>
                     <th>Shipping</th>
                     <th>Date Sold</th>
                 </tr>
